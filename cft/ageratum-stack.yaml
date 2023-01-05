@@ -25,11 +25,6 @@ Metadata:
       Parameters: 
       - ProjectName
       - Environment
-    #################################### KMS Key ###################################################
-    # - Label: 
-    #     default: "KMS Configuration:"
-    #   Parameters: 
-    #   - KmsMageratumKeyIdRegion1
     #################################### EC2 #######################################################
     - Label: 
         default: "EC2 Instance(Jenkins Server) Configuration:"
@@ -46,9 +41,6 @@ Metadata:
         default: Project Name.
       Environment:
         default: Environment Name.
-      ################################## KMS Key ###################################################
-      # KmsMageratumKeyIdRegion1:
-      #   default: KMS Key Id in Region-1.
       ################################### EC2  #####################################################
       EC2InstanceType:
         default: Type of EC2 instance to launch for the server.
@@ -78,15 +70,6 @@ Parameters:
     Type: String
     AllowedValues: [devl, test, prod]
     ConstraintDescription: The Environment must be devl / test or prod
-  # ###################################### KMS Key ###################################################
-  # KmsMageratumKeyIdRegion1: 
-  #   Type: String
-  #   Description: KMS Key Id In Region-1.
-  #   Default: e4c733c5-9fbe-4a90-bda1-6f0362bc9b89
-  #   MinLength: 36
-  #   MaxLength: 36
-  #   AllowedPattern: "[a-z0-9-]*"
-  #   ConstraintDescription: The length of the KMS Key Id should be 36 and must be lowercase alphabets, numbers and dash.
   ###################################### EC2 #######################################################
   EC2InstanceType:
     Description: Type Of EC2 Instance To Launch For The Server. Only Compute Type Nodes Are Currently Specified.
