@@ -1,0 +1,334 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+   CFN Template to create a EC2 instance with Jenkins installed. 
+
+Metadata:
+  TemplateName: agentum-stack.yaml
+  TemplateType: EC2 Instance
+  Version: 1.0.0
+  Owner: Subhamay Bhattacharyya
+  ProjectName: Ageratum
+  Modification History: 
+    - 1.0.0  - January 03, 2022   -- Initial Version 
+  Resources: 
+    - EC2 instance with Jenkins installed
+  StepsToTest: |
+    Manualy verify the Stack.
+  StepsToCleanup: |
+    Stack delete command
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    #################################### Project Name and Environment ##############################
+    - Label: 
+        default: "Project And Environment:"
+      Parameters: 
+      - ProjectName
+      - Environment
+    #################################### KMS Key ###################################################
+    # - Label: 
+    #     default: "KMS Configuration:"
+    #   Parameters: 
+    #   - KmsMageratumKeyIdRegion1
+    #################################### EC2 #######################################################
+    - Label: 
+        default: "EC2 Instance(Jenkins Server) Configuration:"
+      Parameters: 
+        - EC2InstanceType
+        - EC2ImageId
+        - VpcId
+        - SubnetId
+        - SSHLocation
+        - JenkinsPort
+    ParameterLabels:
+      ################################## Project Name and Environment ##############################
+      ProjectName:
+        default: Project Name.
+      Environment:
+        default: Environment Name.
+      ################################## KMS Key ###################################################
+      # KmsMageratumKeyIdRegion1:
+      #   default: KMS Key Id in Region-1.
+      ################################### EC2  #####################################################
+      EC2InstanceType:
+        default: Type of EC2 instance to launch for the server.
+      EC2ImageId:
+        default: EC2 Image Id.
+      VpcId: 
+        default: The VPC where the EC2 Security Group will be created.
+      SubnetId:
+        default: The Subnet where the EC2 instance will be created.
+      SSHLocation:
+        default: Source IP address that will be allowed to SSH to the EC2 instance.
+      JenkinsPort:
+        default: The Port that will be used to access Jenkins
+Parameters:
+  ###################################### Project And Environment Name ##############################
+  ProjectName:
+    Default: ageratum
+    Description: The Name Of The Project.
+    Type: String
+    MinLength: 5
+    MaxLength: 30
+    AllowedPattern: "[a-z]*"
+    ConstraintDescription: The length should be between 5 and 30, must contain only lowercase alphabets.
+  Environment:
+    Default: devl
+    Description: The Name Of The Environment.
+    Type: String
+    AllowedValues: [devl, test, prod]
+    ConstraintDescription: The Environment must be devl / test or prod
+  # ###################################### KMS Key ###################################################
+  # KmsMageratumKeyIdRegion1: 
+  #   Type: String
+  #   Description: KMS Key Id In Region-1.
+  #   Default: e4c733c5-9fbe-4a90-bda1-6f0362bc9b89
+  #   MinLength: 36
+  #   MaxLength: 36
+  #   AllowedPattern: "[a-z0-9-]*"
+  #   ConstraintDescription: The length of the KMS Key Id should be 36 and must be lowercase alphabets, numbers and dash.
+  ###################################### EC2 #######################################################
+  EC2InstanceType:
+    Description: Type Of EC2 Instance To Launch For The Server. Only Compute Type Nodes Are Currently Specified.
+    Type: String
+    Default: t2.micro
+    ConstraintDescription: Must be a valid EC2 instance type
+    AllowedValues: 
+      - t2.nano
+      - t2.micro
+      - t2.small
+  EC2ImageId:
+    Description: Image Id To Be Used To Launch The EC2 Instance.
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+  VpcId:  
+    Description: VPC ID That This Stack Will Be Launched In.
+    Type: AWS::EC2::VPC::Id
+    AllowedPattern: "[a-z0-9-]*"
+  SubnetId:
+    Description: VPC Subnet That This Stack Will Be Launched In.
+    Type: AWS::EC2::Subnet::Id
+    AllowedPattern: "[a-z0-9-]*"
+  SSHLocation:
+    Description: The Source Ip Address (/32) Or Source Ip Address Range (X.X.X.X/X) That Will Be Allowed To Ssh To The Ec2 Instances
+    Type: String
+    MinLength: 9
+    MaxLength: 18
+    Default: 0.0.0.0/0
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
+  JenkinsPort:
+    Description: The Port that will be used to access Jenkins (Must be port 1024 or above, unless changing jenkins user).
+    Type: Number
+    MinValue: 1024
+    MaxValue: 65535
+    Default: 8080
+Resources:
+  ###################################### EC2 Instance Role #########################################
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ageratum-ec2-instance-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Principal:
+              Service: ec2.amazonaws.com
+            Effect: Allow
+            Sid: AllowStsAssumeRole
+      Policies:
+        - PolicyName: ageratum-ec2-instance-policy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action: 
+                - '*'
+                Resource: '*'
+                Effect: Allow
+                Sid: AllowAdministratorAccess
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  ###################################### EC2 Instance Profile ######################################
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName:  ageratum-ec2-instance-profile
+      Path: /
+      Roles:
+        - !Ref EC2InstanceRole
+  ###################################### EC2 Security Group ########################################
+  ServerSecurityGroup:
+    # http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-security-group.html
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group that will be used for the Jenkins instance. Open ports 22, and the JenkinsPort
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
+        - IpProtocol: tcp
+          FromPort: !Ref JenkinsPort
+          ToPort: !Ref JenkinsPort
+          CidrIp: !Ref SSHLocation
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  ###################################### EC2 Instance ##############################################
+  JenkinsInstance:
+    # Description: Jenkins Standalone EC2 Instance running Java 8, and Jenkins.
+    Type: AWS::EC2::Instance
+    Metadata:
+      AWS::CloudFormation::Init:
+        Comment: Install Jenkins Server
+        # configSets is used when there are multiple configs that you want to run, for multiple instances. If not needed then just config (default) is adequate.
+        configSets:
+          default: [mountVolume, downloadJenkinsRepo, installJenkins, config] ###, jenkinsConfig]
+        # This configSet will define how we handle the additional EBS volume that we create with the Instance. We will mount the volume in /var/lib/Jenkins
+        mountVolume:
+          commands:
+            01_mkdir:
+              command: sudo mkdir -p /var/lib/jenkins
+            02_fdisk:
+              command: echo -e "o\nn\np\n1\n\n\nw" | sudo fdisk /dev/sdb
+            03_wait:
+              command: sleep 3
+            04_mkfs:
+              command: sudo mkfs.ext4 /dev/sdb1
+            05_disk_label:
+              command: e2label /dev/sdb1 JENKINS
+            06_fstab:
+              command: echo -e "LABEL=JENKINS     /var/lib/jenkins    ext4   defaults 0 0" >> /etc/fstab
+            07_mount:
+              command: mount -a
+
+        downloadJenkinsRepo:
+          commands:
+            01_yum_update:
+              command: sudo yum update -y
+            02_download_jenkins_repo:
+              command: sudo wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+            03_import_key_file:
+              command: sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io.key
+            04_yum_upgrade:
+              command: sudo yum upgrade
+            05_install_java:
+              command: sudo amazon-linux-extras install java-openjdk11 -y
+            06_check_java_ver: 
+              command: java -version > java_version.txt
+        
+        installJenkins:
+          packages:
+            yum:
+              jenkins: []
+          services:
+            sysvinit:
+              jenkins:
+                enabled: true
+                ensureRunning: true
+        config:
+          commands:
+            01_start_config:
+              command: echo "Start Default Config"
+          files:
+              /etc/cfn/cfn-hup.conf:
+                content: !Sub |
+                  [main]
+                  stack=${AWS::StackId}
+                  region=${AWS::Region}
+                mode: 000400
+                owner: root
+                group: root
+              /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+                content: !Sub |
+                  [cfn-auto-reloader-hook]
+                  triggers=post.update
+                  path=Resources.JenkinsInstance.Metadata.AWS::CloudFormation::Init
+                  action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource JenkinsInstance --region ${AWS::Region}
+                mode: 000400
+                owner: root
+                group: root
+          services:
+              cfn-hup:
+                enable: true
+                ensureRunning: true
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+
+    # Creation Policy will ensure that if the instance isn't complete within the specified window, that a rollback will occur
+    CreationPolicy:
+      ResourceSignal:
+        Count: '1'
+        Timeout: PT5M
+
+    # Properties of the Instance that we are launching. Here we define things like EBS volumes, SG's, The AMI used, etc..
+    Properties:
+      # Create the 25GB EBS volume that we will use for /var/lib/jenkins
+      BlockDeviceMappings:
+        - DeviceName: /dev/sdb
+          Ebs:
+            DeleteOnTermination: false
+            VolumeType: gp2
+            VolumeSize: 25
+      # Pull the Image or AMI from SSM Parameter Store
+      ImageId: !Ref EC2ImageId
+      # Pull the Intance Type, Subnet, KeyName, etc from the Parameters we defined earlier
+      InstanceType: !Ref EC2InstanceType
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          DeleteOnTermination: true
+          SubnetId: !Ref SubnetId
+          # This defines the SG that we will place on the ENI, We will create the SG after the instance resource definition
+          GroupSet: 
+            - !Ref ServerSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-jenkins-server'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+      # Use the user data to instantiate the cfn service, which will report back to CloudFormaton once the instance is set up
+      UserData:
+        Fn::Base64: 
+          !Sub |     # No more Fn::Join needed
+            #!/bin/bash -xe
+            
+            # Get the latest CloudFormation helper scripts
+            yum install -y aws-cfn-bootstrap
+            
+            # Start cfn-init
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource JenkinsInstance --region ${AWS::Region}
+            
+            # cfn-init completed so signal success or not
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource JenkinsInstance --region ${AWS::Region}
+Outputs:
+  EC2InstanceId:
+    Description: The EC2 Instance Id.
+    Value: !Ref JenkinsInstance
+  EC2SubnetId:
+    Description: The EC2 instance availability zone
+    Value: !GetAtt JenkinsInstance.AvailabilityZone
+  EC2PublicIP:
+    Description: The EC2 instance Public IP
+    Value: !GetAtt JenkinsInstance.PublicIp
+  JenkinsURL:
+    Description: The URL of the Jenkins Server
+    Value: !Join ['', ['http://', !GetAtt JenkinsInstance.PublicIp,':8080']]
+  EC2InstanceProfileArn:
+    Description: The EC2 instance profile Arn
+    Value: !GetAtt EC2InstanceProfile.Arn
+  SecurityGroupId: 
+    Description: The Security Group Id
+    Value: !Ref ServerSecurityGroup
+
+
